@@ -45,12 +45,10 @@ module pipline_cpu(
     wire branch_taken;
     wire [31:0] branch_target;
     wire hazard_id_ex_flush;
-    
-    // Syscall Detection
-    // Opcode 0 (R-type) and Funct 0x0C (12)
-    always @(*) begin
+
+    always @(posedge clock) begin
         if (opcode == 6'b000000 && funct == 6'b001100) begin
-            $display("Syscall detected at PC %h. Finishing simulation.", id_pc);
+            $display("Syscall detected. Pipeline flushed. Finishing simulation.");
             $finish;
         end
     end
@@ -106,10 +104,17 @@ module pipline_cpu(
     
     assign pc_plus_4 = pc_out + 4;
     
+    // Logic to handle Control Instruction in Delay Slot
+    // If a Branch/Jump is in the delay slot of another Branch/Jump (which is now in EX), the first one wins.
+    wire ex_branch_taken; // From ID/EX register
+    wire actual_branch_taken;
+    
+    assign actual_branch_taken = branch_taken && !ex_branch_taken;
+    
     // Next PC Logic
     // Priority: Reset (handled in PC) > Branch/Jump > PC+4
     // Branch/Jump taken logic from ID stage
-    assign next_pc = branch_taken ? branch_target : pc_plus_4;
+    assign next_pc = actual_branch_taken ? branch_target : pc_plus_4;
     
     // Flush IF/ID if branch taken
     // DELAY SLOT SUPPORT: Do NOT flush IF/ID on branch taken.
@@ -261,6 +266,7 @@ module pipline_cpu(
         .id_mem_read(ctrl_mem_read),
         .id_mem_write(ctrl_mem_write),
         .id_branch(ctrl_branch),
+        .id_branch_taken(actual_branch_taken), // Pass the actual decision to EX
         .id_mem_size(id_ex_in_mem_size),
         .id_mem_unsigned(id_ex_in_mem_unsigned),
         .id_alu_op(id_ex_in_alu_op),
@@ -283,6 +289,7 @@ module pipline_cpu(
         .ex_mem_read(ex_mem_read),
         .ex_mem_write(ex_mem_write),
         .ex_branch(ex_branch),
+        .ex_branch_taken(ex_branch_taken), // Output from EX
         .ex_mem_size(ex_mem_size),
         .ex_mem_unsigned(ex_mem_unsigned),
         .ex_alu_op(ex_alu_op),
@@ -336,6 +343,13 @@ module pipline_cpu(
 
     assign alu_in_b_final = ex_alu_src ? ex_imm : alu_in_b_temp;
 
+    // Store Data Forwarding
+    // For SW instructions, the data to be stored comes from Rt.
+    // This data might need forwarding just like ALU input B.
+    // Since SW uses Rt as source, forward_b logic applies.
+    wire [31:0] ex_store_data_forwarded;
+    assign ex_store_data_forwarded = alu_in_b_temp; // Reuse the forwarded value for Rt
+
     wire [31:0] alu_out_internal;
     
     // HI/LO Registers
@@ -387,7 +401,6 @@ module pipline_cpu(
         .rst(reset),
         .stall(1'b0),
         .flush(1'b0), // Usually no flush needed here unless exception
-        
         .ex_reg_write(ex_reg_write),
         .ex_mem_to_reg(ex_mem_to_reg),
         .ex_mem_read(ex_mem_read),
@@ -395,14 +408,12 @@ module pipline_cpu(
         .ex_branch(ex_branch),
         .ex_mem_size(ex_mem_size),
         .ex_mem_unsigned(ex_mem_unsigned),
-        
         .ex_alu_result(alu_result),
-        .ex_mem_write_data(alu_in_b_temp), // Store data comes from rt (forwarded)
+        .ex_mem_write_data(ex_store_data_forwarded), // Store data comes from rt (forwarded)
         .ex_write_reg(ex_write_reg),
         .ex_zero(alu_zero),
         .ex_branch_target(32'b0), // Not used as branch is in ID
         .ex_pc(ex_pc),
-        
         .mem_reg_write(mem_reg_write),
         .mem_mem_to_reg(mem_mem_to_reg),
         .mem_mem_read(mem_mem_read),
@@ -462,14 +473,12 @@ module pipline_cpu(
         .reset(reset),
         .stall(1'b0),
         .flush(1'b0),
-        
         .mem_reg_write(mem_reg_write),
         .mem_mem_to_reg(mem_mem_to_reg),
         .mem_read_data(mem_final_read_data), // Use the extracted data
         .mem_alu_result(mem_alu_result),
         .mem_write_reg(mem_write_reg),
         .mem_pc(mem_pc),
-        
         .wb_reg_write(wb_reg_write),
         .wb_mem_to_reg(wb_mem_to_reg),
         .wb_read_data(wb_read_data),

@@ -1,11 +1,10 @@
 `timescale 1ns / 1ps
 
 module alu_control_unit(
-    input wire [3:0] alu_op_type, // 来自主控制单元的ALU操作类型 (Expanded to 4 bits)
-    input wire [5:0] funct,       // 指令的功能码
-    output reg [5:0] alu_control  // 输出给ALU的控制信号
+    input wire [3:0] alu_op_type, 
+    input wire [5:0] funct,       
+    output reg [5:0] alu_control 
 );
-
     // ALU Control Codes (Must match alu.v)
     localparam ALU_SLL  = 6'b000000;
     localparam ALU_SRL  = 6'b000010;

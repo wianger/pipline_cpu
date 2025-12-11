@@ -7,17 +7,14 @@ module hazard_detection_unit(
     input wire       id_branch,      // 当前ID阶段是分支指令 (beq)
     input wire       id_jump_reg,    // 当前ID阶段是寄存器跳转 (jr)
     // 注意: j/jal 不需要寄存器数据，所以不需要检测数据冒险(除非jr用rs)
-
     // EX Stage Info
     input wire       id_ex_mem_read, // EX阶段是Load
     input wire       id_ex_reg_write,// EX阶段写寄存器
     input wire [4:0] id_ex_rt,       // Load的目标 (或R-type的目标)
     input wire [4:0] id_ex_rd,       // R-type的目标 (如果区分的话，通常统一用 write_reg)
-
     // MEM Stage Info (用于分支指令在ID阶段的冒险检测)
     input wire       ex_mem_mem_read,// MEM阶段是Load
     input wire [4:0] ex_mem_write_reg, // MEM阶段写回寄存器
-
     // 控制信号输出
     output reg pc_write,            // PC写使能
     output reg if_id_stall,         // IF/ID暂停
@@ -29,7 +26,6 @@ module hazard_detection_unit(
         pc_write = 1'b1;
         if_id_stall = 1'b0;
         id_ex_flush = 1'b0;
-
         // 1. Load-Use Hazard (ALU指令在ID, Load在EX)
         // 如果EX阶段是Load，且ID阶段的源寄存器(rs或rt)依赖于Load的目标
         // 优化: 只有当ID指令确实使用rs/rt时才暂停 (这里假设外部控制单元已处理，或者我们简单假设R-type/I-type都用)
